@@ -1,4 +1,5 @@
 pub mod renderer;
+pub mod error;
 
 #[cfg(test)]
 mod tests {
@@ -7,6 +8,5 @@ mod tests {
     #[test]
     fn application() {
         let renderer = Renderer::new();
-        println!("test strings are: {:#?}", renderer.image_paths().iter());
     }
 }
