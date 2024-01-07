@@ -1,8 +1,8 @@
 #[derive(Debug)]
 pub struct Error {
-    error_type: ErrorType,
-    message: String,
-    description: String,
+    pub error_type: ErrorType,
+    pub message: String,
+    pub description: String,
 }
 
 impl Error {
