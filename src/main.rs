@@ -1,24 +1,25 @@
-pub mod renderer;
-pub mod error;
+mod aspen;
+mod error;
 
 fn main() {
-    let renderer = renderer::Renderer::new();
-    match &renderer {
-        Ok(_) => {},
+    let aspen_fw = match aspen::Aspen::new() {
+        Ok(val) => val,
         Err(err) => {
             match msgbox::create(
                 "Crash", 
-                format!("Fatal error during renderer creation: {}\nDescription: {}", err.message, err.description).as_str(), 
+                format!("Error: {}\n\nDescription: {}", err.message, err.description).as_str(), 
                 msgbox::IconType::Error
             ) {
-                Ok(_) => {},
+                Ok(_) => return,
                 Err(err) => {
                     println!("message box creation error: {}", err.to_string());
                     return;
                 }
             }
         }
-    }
+    };
 
-    println!("renderer: {:#?}", renderer);
+    aspen_fw.run();
+
+   // println!("renderer: {:?}", renderer);
 }

@@ -10,8 +10,28 @@ impl Error {
         Error {
             error_type,
             message,
-            description
+            description,
         }
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Error: {}\nDesc: {}", self.message, self.description)
+    }
+}
+
+impl std::error::Error for Error {
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        None
+    }
+
+    fn description(&self) -> &str {
+        &self.description
+    }
+
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
     }
 }
 
@@ -21,4 +41,6 @@ pub enum ErrorType {
     VulkanMissing,
     WinitEventLoopCreationFailed,
     FailedToCreateVulkanInstance,
+    WinitWindowCreationFailed,
+    SurfaceCreationFailed,
 }
