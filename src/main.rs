@@ -10,5 +10,6 @@ fn main() {
             return;
         }
     };
+    
     aspen_fw.run().expect("framework running failed");
 }

@@ -41,18 +41,25 @@ pub enum ErrorType {
     VulkanInstanceCreationFailed,
     WindowCreationFailed,
     VulkanSurfaceCreationFailed,
+    VulkanPhysicalDeviceEnumerationFailed,
+    NoSuitableVulkanPhysicalDevices,
+    VulkanDeviceCreationFailed,
+    GetSurfaceCapabilitiesFailed,
+    GetSurfaceFormatFailed,
+    VulkanSwapchainCreationFailed,
+    GetSurfaceCompositeAlphaFailed,
 }
 
 // panics if msgbox creation fails
 pub fn crash_notif(err: Error) {
     match msgbox::create(
         "Crash", 
-        format!("Error {:?}:\n{}", err.error_type, err.message).as_str(), 
+        format!("Error '{:?}'.\n{}", err.error_type, err.message).as_str(), 
         msgbox::IconType::Error
     ) {
         Ok(_) => return,
         Err(msgbox_err) => {
-            panic!("message box creation error: {}\ninternal error was: {}", msgbox_err.to_string(), err.message);
+            panic!("message box creation error '{}'\ninternal error was '{}'", msgbox_err.to_string(), err.message);
         }
     }
 }

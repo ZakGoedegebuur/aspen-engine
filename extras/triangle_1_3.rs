@@ -479,7 +479,7 @@ fn main() -> Result<(), impl Error> {
     // Since we need to draw to multiple images, we are going to create a different image view for
     // each image.
     let mut attachment_image_views = window_size_dependent_setup(&images, &mut viewport);
-
+    
     // Before we can start creating and recording command buffers, we need a way of allocating
     // them. Vulkano provides a command buffer allocator, which manages raw Vulkan command pools
     // underneath and provides a safe interface for them.
