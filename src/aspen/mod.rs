@@ -1,3 +1,5 @@
+pub mod error;
+
 use std::sync::Arc;
 
 use vulkano::{
@@ -24,100 +26,78 @@ use winit::{
     }
 };
 
-use crate::error::{
-    Error,
-    ErrorType
-};
-
-#[derive(Debug)]
-pub struct Aspen {
+pub struct Framework {
     event_loop: EventLoop<()>,
-    instance: Arc<Instance>,
-    main_window: Arc<Window>,
-    main_window_surface: Arc<Surface>
+    vk_library: Arc<VulkanLibrary>,
+    vk_instance: Arc<Instance>,
+    // Index '0' should always be the main window if the app is not windowless
+    windows: Vec<WindowSurfacePair>, 
 }
 
-impl Aspen {
-    pub fn new() -> Result<Aspen, Error> {
+struct WindowSurfacePair {
+    window: Arc<Window>,
+    surface: Arc<Surface>
+}
+
+impl Framework {
+    pub fn new() -> Result<Framework, error::Error> {
         let event_loop = match EventLoop::new() {
             Ok(eloop) => eloop,
-            Err(err) => return Err(Error::new(
-                ErrorType::WinitEventLoopCreationFailed, 
-                "Winit event loop creation failed".to_owned(),
+            Err(err) => return Err(error::Error::new(
+                error::ErrorType::EventLoopCreationFailed, 
                 err.to_string()
             ))
         };
 
-        let library = match VulkanLibrary::new() {
+        let vk_library = match VulkanLibrary::new() {
             Ok(lib) => lib,
-            Err(err) => return Err(Error::new(
-                ErrorType::VulkanMissing, 
+            Err(_) => return Err(error::Error::new(
+                error::ErrorType::VulkanMissing,
                 "System could not find vulkan. Make sure your system supports vulkan and your drivers are up-to-date".to_owned(),
-                err.to_string()
             ))
         };
 
-        let instance = match Instance::new(library, InstanceCreateInfo {
+        let vk_instance = match Instance::new(vk_library.clone(), InstanceCreateInfo {
             enabled_extensions: Surface::required_extensions(&event_loop),
             ..Default::default()
         }) {
             Ok(instance) => instance,
-            Err(err) => return Err(Error::new(
-                ErrorType::FailedToCreateVulkanInstance, 
-                "Vulkan instance creation failed".to_owned(),
+            Err(err) => return Err(error::Error::new(
+                error::ErrorType::VulkanInstanceCreationFailed, 
                 err.to_string(),
             ))
         };
-
-        //return Err(Error::new(
-        //    ErrorType::VulkanMissing, 
-        //    "Test error".to_owned(),
-        //    "Generic failure".to_owned(),
-        //));
 
         let main_window = Arc::new(match WindowBuilder::new().build(&event_loop) {
             Ok(val) => val,
-            Err(err) => return Err(Error::new(
-                ErrorType::WinitWindowCreationFailed,
-                "Winit main window creation failed".to_owned(),
+            Err(err) => return Err(error::Error::new(
+                error::ErrorType::WindowCreationFailed,
                 err.to_string(),
             ))
         });
 
-        let main_window_surface = match Surface::from_window(instance.clone(), main_window.clone()) {
+        let main_window_surface = match Surface::from_window(vk_instance.clone(), main_window.clone()) {
             Ok(val) => val,
-            Err(err) => return Err(Error::new(
-                ErrorType::SurfaceCreationFailed, 
-                "Surface creation failed".to_owned(), 
+            Err(err) => return Err(error::Error::new(
+                error::ErrorType::VulkanSurfaceCreationFailed, 
                 err.to_string(),
             ))
         };
 
-        Ok(Aspen {
+        Ok(Framework {
             event_loop,
-            instance,
-            main_window,
-            main_window_surface,
+            vk_library: vk_library.clone(),
+            vk_instance,
+            windows: vec![ WindowSurfacePair {
+                window: main_window,
+                surface: main_window_surface
+            } ]
         })
     }
 
-    pub fn run(self) {
-        let mut close_requested = false;
-        
-        self.event_loop.run(|event, elwt| {
-            match event {
-                Event::WindowEvent { event, .. } => match event {
-                    WindowEvent::CloseRequested => {
-                        close_requested = true;
-                    },
-                    _ => {}
-                },
-                _ => {}
-            }
+    pub fn run(&self) -> Result<(), ()> {
 
-            if close_requested {
-                elwt.exit();
-            }
-        });
+
+        Ok(())
     }
 }

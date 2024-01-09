@@ -1,25 +1,14 @@
 mod aspen;
-mod error;
+
+//use aspen::error::Error;
 
 fn main() {
-    let aspen_fw = match aspen::Aspen::new() {
+    let aspen_fw = match aspen::Framework::new() {
         Ok(val) => val,
         Err(err) => {
-            match msgbox::create(
-                "Crash", 
-                format!("Error: {}\n\nDescription: {}", err.message, err.description).as_str(), 
-                msgbox::IconType::Error
-            ) {
-                Ok(_) => return,
-                Err(err) => {
-                    println!("message box creation error: {}", err.to_string());
-                    return;
-                }
-            }
+            aspen::error::crash_notif(err);
+            return;
         }
     };
-
-    aspen_fw.run();
-
-   // println!("renderer: {:?}", renderer);
+    aspen_fw.run().expect("framework running failed");
 }
