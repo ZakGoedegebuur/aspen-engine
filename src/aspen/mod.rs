@@ -16,7 +16,7 @@ use vulkano::{
     swapchain::{
         Surface, 
         Swapchain, 
-        SwapchainCreateInfo
+        SwapchainCreateInfo, acquire_next_image, SwapchainPresentInfo
     }, 
     device::{
         DeviceExtensions, 
@@ -66,9 +66,9 @@ use vulkano::{
         GraphicsPipeline, 
         DynamicState
     }, 
-    command_buffer::allocator::StandardCommandBufferAllocator, 
+    command_buffer::{allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage, RenderingInfo, RenderingAttachmentInfo}, 
     sync,
-    sync::GpuFuture
+    sync::GpuFuture, Validated, VulkanError, render_pass::{AttachmentLoadOp, AttachmentStoreOp}
 };
 
 use winit::{
@@ -311,13 +311,13 @@ impl Framework {
 
         let vertices = [
             Vertex2D {
-                position: [-0.5, -0.25],
+                position: [-0.5, -0.5],
+            },
+            Vertex2D {
+                position: [0.5, -0.5],
             },
             Vertex2D {
                 position: [0.0, 0.5],
-            },
-            Vertex2D {
-                position: [0.25, -0.1],
             },
         ];
 
@@ -493,12 +493,93 @@ impl Framework {
     
                         self.window.swapchain = new_swapchain;
 
-                        // Now that we have new swapchain images, we must create new image views from
-                        // them as well.
                         self.window.image_views =
                             window_size_dependent_setup(&new_images, &mut self.window.viewport);
                         
                         self.window.recreate_swapchain = false;
+                    }
+
+                    let (image_index, suboptimal, acquire_future) =
+                    match acquire_next_image(self.window.swapchain.clone(), None).map_err(Validated::unwrap) {
+                        Ok(r) => r,
+                        Err(VulkanError::OutOfDate) => {
+                            self.window.recreate_swapchain = true;
+                            return;
+                        }
+                        Err(e) => panic!("failed to acquire next image: {e}"),
+                    };
+
+                    if suboptimal {
+                        self.window.recreate_swapchain = true;
+                    }
+
+                    let mut builder = AutoCommandBufferBuilder::primary(
+                        &self.vk_command_buffer_allocator, 
+                        self.vk_graphics_queue.queue_family_index(), 
+                        CommandBufferUsage::OneTimeSubmit,
+                    ).unwrap();
+
+                    builder
+                        .begin_rendering(
+                            RenderingInfo {
+                                color_attachments: vec![
+                                    Some(RenderingAttachmentInfo {
+                                        load_op: AttachmentLoadOp::Clear,
+                                        store_op: AttachmentStoreOp::Store,
+                                        clear_value: Some([0.0, 0.0, 1.0, 1.0].into()),
+                                        ..RenderingAttachmentInfo::image_view(
+                                            self.window.image_views[image_index as usize].clone()
+                                        )
+                                    })
+                                ],
+                                ..Default::default()
+                            }
+                        ).unwrap()
+                        .set_viewport(0, [self.window.viewport.clone()].into_iter().collect())
+                        .unwrap()
+                        .bind_pipeline_graphics(self.graphics_pipelines[0].clone())
+                        .unwrap()
+                        .bind_vertex_buffers(0, self.vertex_buffers[0].clone())
+                        .unwrap()
+                        .draw(self.vertex_buffers[0].len() as u32, 1, 0, 0)
+                        .unwrap()
+                        .end_rendering()
+                        .unwrap();
+                    
+                    let command_buffer = builder.build().unwrap();
+
+                    let future = self.window.prev_frame_end
+                        .take()
+                        .unwrap()
+                        .join(acquire_future)
+                        .then_execute(self.vk_graphics_queue.clone(), command_buffer)
+                        .unwrap()
+                        // The color output is now expected to contain our triangle. But in order to
+                        // show it on the screen, we have to *present* the image by calling
+                        // `then_swapchain_present`.
+                        //
+                        // This function does not actually present the image immediately. Instead it
+                        // submits a present command at the end of the queue. This means that it will
+                        // only be presented once the GPU has finished executing the command buffer
+                        // that draws the triangle.
+                        .then_swapchain_present(
+                            self.vk_graphics_queue.clone(),
+                            SwapchainPresentInfo::swapchain_image_index(self.window.swapchain.clone(), image_index),
+                        )
+                        .then_signal_fence_and_flush();
+
+                    match future.map_err(Validated::unwrap) {
+                        Ok(future) => {
+                            self.window.prev_frame_end = Some(future.boxed());
+                        }
+                        Err(VulkanError::OutOfDate) => {
+                            self.window.recreate_swapchain = true;
+                            self.window.prev_frame_end = Some(sync::now(self.vk_device.clone()).boxed());
+                        }
+                        Err(e) => {
+                            println!("failed to flush future: {e}");
+                            self.window.prev_frame_end = Some(sync::now(self.vk_device.clone()).boxed());
+                        }
                     }
                 }
                 //Event::AboutToWait => self.window.window.request_redraw(),
