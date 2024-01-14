@@ -1,6 +1,4 @@
-pub mod error;
-
-use error::{
+use crate::error::{
     Error,
     ErrorType
 };
@@ -96,7 +94,7 @@ pub struct Framework {
     vk_graphics_queue: Arc<Queue>,
 
     // Index '0' should always be the main window if the app is not windowless
-    window: WindowWrapper, 
+    windows: Vec<WindowWrapper>, 
     graphics_pipelines: Vec<Arc<GraphicsPipeline>>,
     vertex_buffers: Vec<Subbuffer<[Vertex2D]>>,
 }
@@ -120,7 +118,7 @@ struct WindowWrapper {
 }
 
 impl Framework {
-    pub fn new() -> Result<Framework, error::Error> {
+    pub fn new() -> Result<Framework, crate::error::Error> {
         let event_loop = match EventLoop::new() {
             Ok(eloop) => eloop,
             Err(err) => return Err(Error::new(
@@ -440,7 +438,7 @@ impl Framework {
             vk_device: vk_device.clone(),
             vk_command_buffer_allocator: command_buffer_allocator.clone(),
             vk_graphics_queue: vk_graphics_queue.clone(),
-            window: WindowWrapper {
+            windows: vec![WindowWrapper {
                 window: main_window,
                 surface: main_window_surface,
                 swapchain: vk_swapchain,
@@ -449,68 +447,68 @@ impl Framework {
                 recreate_swapchain: false,
                 prev_frame_end: Some(sync::now(vk_device.clone()).boxed()),
                 viewport,
-            },
+            }],
             graphics_pipelines: vec![vk_def_pipeline],
             vertex_buffers: vec![vertex_buffer],
         })
     }
 
     pub fn run(mut self) -> Result<(), ()> {
-        let _ = self.event_loop.run(move |event, elwt| {
+        let _ = self.event_loop.run(move |event, window| {
             match event {
                 Event::WindowEvent { 
                     event: WindowEvent::CloseRequested,
                     ..
                 } => {
-                    elwt.exit();
+                    window.exit();
                 },
                 Event::WindowEvent {
                     event: WindowEvent::Resized(_),
                     ..
                 } => {
-                    self.window.recreate_swapchain = true;
+                    self.windows[0].recreate_swapchain = true;
                 }
                 Event::WindowEvent { 
                     event: WindowEvent::RedrawRequested,
                     ..
                 } => {
                     println!("redraw requested!");
-                    let image_extent: [u32; 2] = self.window.window.inner_size().into();
+                    let image_extent: [u32; 2] = self.windows[0].window.inner_size().into();
 
                     if image_extent.contains(&0) {
                         return;
                     }
 
-                    self.window.prev_frame_end.as_mut().unwrap().cleanup_finished();
+                    self.windows[0].prev_frame_end.as_mut().unwrap().cleanup_finished();
 
-                    if self.window.recreate_swapchain {
-                        let (new_swapchain, new_images) = self.window.swapchain
+                    if self.windows[0].recreate_swapchain {
+                        let (new_swapchain, new_images) = self.windows[0].swapchain
                             .recreate(SwapchainCreateInfo {
                                 image_extent,
-                                ..self.window.swapchain.create_info()
+                                ..self.windows[0].swapchain.create_info()
                             })
                             .expect("failed to recreate swapchain");
     
-                        self.window.swapchain = new_swapchain;
+                        self.windows[0].swapchain = new_swapchain;
 
-                        self.window.image_views =
-                            window_size_dependent_setup(&new_images, &mut self.window.viewport);
+                        self.windows[0].image_views =
+                            window_size_dependent_setup(&new_images, &mut self.windows[0].viewport);
                         
-                        self.window.recreate_swapchain = false;
+                        self.windows[0].recreate_swapchain = false;
                     }
 
                     let (image_index, suboptimal, acquire_future) =
-                    match acquire_next_image(self.window.swapchain.clone(), None).map_err(Validated::unwrap) {
+                    match acquire_next_image(self.windows[0].swapchain.clone(), None).map_err(Validated::unwrap) {
                         Ok(r) => r,
                         Err(VulkanError::OutOfDate) => {
-                            self.window.recreate_swapchain = true;
+                            self.windows[0].recreate_swapchain = true;
                             return;
                         }
                         Err(e) => panic!("failed to acquire next image: {e}"),
                     };
 
                     if suboptimal {
-                        self.window.recreate_swapchain = true;
+                        self.windows[0].recreate_swapchain = true;
                     }
 
                     let mut builder = AutoCommandBufferBuilder::primary(
@@ -528,14 +526,14 @@ impl Framework {
                                         store_op: AttachmentStoreOp::Store,
                                         clear_value: Some([0.0, 0.0, 1.0, 1.0].into()),
                                         ..RenderingAttachmentInfo::image_view(
-                                            self.window.image_views[image_index as usize].clone()
+                                            self.windows[0].image_views[image_index as usize].clone()
                                         )
                                     })
                                 ],
                                 ..Default::default()
                             }
                         ).unwrap()
-                        .set_viewport(0, [self.window.viewport.clone()].into_iter().collect())
+                        .set_viewport(0, [self.windows[0].viewport.clone()].into_iter().collect())
                         .unwrap()
                         .bind_pipeline_graphics(self.graphics_pipelines[0].clone())
                         .unwrap()
@@ -548,7 +546,7 @@ impl Framework {
                     
                     let command_buffer = builder.build().unwrap();
 
-                    let future = self.window.prev_frame_end
+                    let future = self.windows[0].prev_frame_end
                         .take()
                         .unwrap()
                         .join(acquire_future)
@@ -564,21 +562,21 @@ impl Framework {
                         // that draws the triangle.
                         .then_swapchain_present(
                             self.vk_graphics_queue.clone(),
-                            SwapchainPresentInfo::swapchain_image_index(self.window.swapchain.clone(), image_index),
+                            SwapchainPresentInfo::swapchain_image_index(self.windows[0].swapchain.clone(), image_index),
                         )
                         .then_signal_fence_and_flush();
 
                     match future.map_err(Validated::unwrap) {
                         Ok(future) => {
-                            self.window.prev_frame_end = Some(future.boxed());
+                            self.windows[0].prev_frame_end = Some(future.boxed());
                         }
                         Err(VulkanError::OutOfDate) => {
-                            self.window.recreate_swapchain = true;
-                            self.window.prev_frame_end = Some(sync::now(self.vk_device.clone()).boxed());
+                            self.windows[0].recreate_swapchain = true;
+                            self.windows[0].prev_frame_end = Some(sync::now(self.vk_device.clone()).boxed());
                         }
                         Err(e) => {
                             println!("failed to flush future: {e}");
-                            self.window.prev_frame_end = Some(sync::now(self.vk_device.clone()).boxed());
+                            self.windows[0].prev_frame_end = Some(sync::now(self.vk_device.clone()).boxed());
                         }
                     }
                 }
