@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct AspenError {
     location: Location,
     message: String,
@@ -54,10 +54,12 @@ impl std::fmt::Display for AspenError {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub enum AspenErrorSeverity {
+    Fatal,
     Error,
-    Warn,
+    LoggingError,
+    Warning,
     Info,
     Unknown
 }

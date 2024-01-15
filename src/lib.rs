@@ -5,21 +5,39 @@ pub mod error;
 pub mod graphics;
 pub mod logging;
 
-use error::AspenError;
+use error::{AspenError, AspenErrorSeverity};
+use logging::AspenLogger;
 
 pub struct Engine<PT> {
     event_loop: EventLoop<()>,
     windows: Vec<AspenWindow>,
+    logger: AspenLogger,
     persistent_data: PT,
 }
 
 impl<PT> Engine<PT> {
-    pub fn new(persistent_data: PT) -> Result<Engine<PT>, AspenError> {
-        let event_loop = EventLoop::new()?;
+    pub fn new(persistent_data: PT, log_filepath: String) -> Result<Engine<PT>, AspenError> {
+        let mut logger = AspenLogger::new(log_filepath)?;
+
+        let event_loop = match EventLoop::new() {
+            Ok(val) => val,
+            Err(err) => return Err(logger.log(
+                AspenError::new(
+                    "EventLoopCreationFailed".to_owned(),
+                    err.to_string(),
+                    AspenErrorSeverity::Fatal
+                ))
+            )
+        };
+
+        logger.log(AspenError::new("ooga".to_owned(), "wooga".to_string(), AspenErrorSeverity::Warning));
+        logger.log(AspenError::new("ooga".to_owned(), "wooga".to_string(), AspenErrorSeverity::Error));
+        logger.log(AspenError::new("ooga".to_owned(), "wooga".to_string(), AspenErrorSeverity::Fatal));
 
         Ok(Engine {
             event_loop,
             windows: vec![],
+            logger,
             persistent_data,
         })
     }
