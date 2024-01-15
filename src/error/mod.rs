@@ -1,13 +1,32 @@
-#[derive(Debug)]
+use serde::Serialize;
+
+#[derive(Serialize, Debug)]
 pub struct AspenError {
     location: Location,
-    err_type: String,
+    message: String,
     details: String,
+    severity: AspenErrorSeverity
 }
 
 impl AspenError {
     pub fn to_string(&self) -> String {
-        format!("ERROR at {}:\ntype:     {}\ndetails:  {}", self.location, self.err_type, self.details)
+        format!("ERROR at {}:\ntype:     {}\ndetails:  {}", self.location, self.message, self.details)
+    }
+}
+
+impl AspenError {
+    #[track_caller]
+    pub fn new(message: String, details: String, severity: AspenErrorSeverity) -> AspenError {
+        let here = std::panic::Location::caller();
+        AspenError {
+            location: Location {
+                filename: here.file(),
+                line: here.line(),
+            },
+            message,
+            details,
+            severity
+        }
     }
 }
 
@@ -18,12 +37,13 @@ impl<T> From<T> for AspenError where
         let here = std::panic::Location::caller();
 
         AspenError {
-            err_type: std::any::type_name::<T>().to_owned(),
+            message: std::any::type_name::<T>().to_owned(),
             details: value.to_string(),
             location: Location {
                 filename: here.file(),
                 line: here.line(),
-            }
+            },
+            severity: AspenErrorSeverity::Unknown
         }
     }
 }
@@ -34,7 +54,15 @@ impl std::fmt::Display for AspenError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Serialize)]
+pub enum AspenErrorSeverity {
+    Error,
+    Warn,
+    Info,
+    Unknown
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct Location {
     pub filename: &'static str,
     pub line: u32,
