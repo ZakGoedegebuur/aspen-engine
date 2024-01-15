@@ -3,32 +3,21 @@ use winit::event_loop::EventLoop;
 pub mod error;
 pub mod graphics;
 
-use error::{
-    Error,
-    Location
-};
+use error::AspenError;
 
-pub struct Framework<PT> {
+pub struct Engine<PT> {
     event_loop: EventLoop<()>,
     windows: Vec<()>,
     persistent_data: PT,
 }
 
-impl<PT> Framework<PT> {
-    pub fn new(persistent_data: PT) -> Result<Framework<PT>, FrameworkInitError> {
+impl<PT> Engine<PT> {
+    pub fn new(persistent_data: PT) -> Result<Engine<PT>, AspenError> {
+        let event_loop = EventLoop::new()?;
 
-        let event_loop = match EventLoop::new() {
-            Ok(eloop) => eloop,
-            Err(err) => return Err(
-                FrameworkInitError {
-                    location: error::Location::here(),
-                    message: "Event loop initialisation failed".to_owned(),
-                    details: err.to_string()
-                }
-            )
-        };
+        let contents = std::fs::read_to_string("fake_path.txt")?;
 
-        Ok(Framework {
+        Ok(Engine {
             event_loop,
             windows: vec![],
             persistent_data,
@@ -37,25 +26,5 @@ impl<PT> Framework<PT> {
 
     pub fn run(self) {
 
-    }
-}
-
-pub struct FrameworkInitError {
-    location: Location,
-    message: String,
-    details: String,
-}
-
-impl Error for FrameworkInitError {
-    fn get_message(&self) -> String {
-        self.message.clone()
-    }
-
-    fn get_details(&self) -> String {
-        self.details.clone()
-    }
-
-    fn get_location(&self) -> Location {
-        self.location.clone()
     }
 }
