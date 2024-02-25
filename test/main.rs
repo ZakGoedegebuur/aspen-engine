@@ -1,10 +1,13 @@
 use std::error::Error;
-
-use aspen_engine::Engine;
+use aspen_engine::AppBuilder;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut engine = Engine::new("log/log.json".to_string())?;
-    engine.use_graphics()?;
+    let mut builder = AppBuilder::new()?;
+    builder.use_graphics()?;
+    builder.add_update_func(|_| println!("update func 1"));
+    builder.add_update_func(|_| println!("update func 2"));
+    let engine = builder.build()?;
+
     engine.run()?;
 
     Ok(())
