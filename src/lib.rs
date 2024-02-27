@@ -18,7 +18,7 @@ use winit::{
         WindowEvent
     }, 
     event_loop::{
-        ControlFlow, EventLoop, EventLoopBuilder
+        ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy
     }, 
     window::WindowId
 };
@@ -28,18 +28,24 @@ pub mod logging;
 
 use logging::AspenLogger;
 
-pub struct AppBuilder {
+pub struct AppBuilder<PT> {
     logger: AspenLogger,
-    event_loop: EventLoop<GlobalUpdateEvent>,
+    event_loop: EventLoop<GlobalEvent>,
     graphics: Option<Graphics>,
-    update_funcs: Vec<fn(&mut Application)>
+    update_funcs: Vec<fn(&mut Application<PT>)>,
+    persistent: PT,
 }
+
 #[derive(Debug)]
-struct GlobalUpdateEvent;
-impl AppBuilder {
-    pub fn new() -> Result<AppBuilder, Box<dyn Error>> {
+enum GlobalEvent {
+    Update,
+    Shutdown
+}
+
+impl<PT> AppBuilder<PT> {
+    pub fn new(persistent: PT) -> Result<AppBuilder<PT>, Box<dyn Error>> {
         let mut logger = AspenLogger::new("log/log.json".to_string())?;
-        let event_loop = EventLoopBuilder::<GlobalUpdateEvent>::with_user_event()
+        let event_loop = EventLoopBuilder::<GlobalEvent>::with_user_event()
             .build()
             .map_err(|err| { logger.log(&err); err})?;
         Ok(AppBuilder {
@@ -47,28 +53,34 @@ impl AppBuilder {
             event_loop,
             graphics: None,
             update_funcs: Vec::new(),
+            persistent,
         })
     }
 
-    pub fn use_graphics(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn use_graphics(mut self) -> Result<AppBuilder<PT>, Box<dyn Error>> {
         self.graphics = Some(
             Graphics::new(&mut self.logger, &self.event_loop)
                 .map_err(|err| { self.logger.log(&err); err })?
         );
-        Ok(())
+        Ok(self)
     }
 
-    pub fn add_update_func(&mut self, func: fn(&mut Application)) {
-        self.update_funcs.push(func)
+    pub fn add_update_func(mut self, func: fn(&mut Application<PT>)) -> AppBuilder<PT> {
+        self.update_funcs.push(func);
+        self
     }
 
-    pub fn build(self) -> Result<Engine, Box<dyn Error>> {
+    pub fn build(self) -> Result<Engine<PT>, Box<dyn Error>> {
+        let application = Application {
+            graphics: self.graphics,
+            ecs: hecs::World::new(),
+            persistent: self.persistent,
+            event_loop_proxy: self.event_loop.create_proxy()
+        };
+
         Ok(Engine {
             event_loop: self.event_loop,
-            application: Application {
-                graphics: self.graphics,
-                ecs: hecs::World::new(),
-            },
+            application,
             logger: self.logger,
             begin_time: SystemTime::now(),
             update_funcs: self.update_funcs,
@@ -76,12 +88,14 @@ impl AppBuilder {
     }
 }
 
-pub struct Application {
+pub struct Application<PT> {
     pub graphics: Option<Graphics>,
     pub ecs: hecs::World,
+    pub persistent: PT,
+    event_loop_proxy: EventLoopProxy<GlobalEvent>,
 }
 
-impl Application {
+impl<PT> Application<PT> {
     fn window_from_id(&mut self, id: &WindowId) -> Option<&Arc<Mutex<AspenWindow>>> {
         let ind = self.window_ind_from_id(id)?;
         Some(&self.graphics.as_mut()?.windows[ind])
@@ -93,17 +107,21 @@ impl Application {
         .iter()
         .position(|window| window.lock().unwrap().id() == *id)
     }
+
+    pub fn exit(&self) {
+        self.event_loop_proxy.send_event(GlobalEvent::Shutdown).unwrap();
+    }
 }
 
-pub struct Engine {
-    event_loop: EventLoop<GlobalUpdateEvent>,
-    application: Application,
+pub struct Engine<PT> {
+    event_loop: EventLoop<GlobalEvent>,
+    application: Application<PT>,
     logger: AspenLogger,
     begin_time: SystemTime,
-    update_funcs: Vec<fn(&mut Application)>,
+    update_funcs: Vec<fn(&mut Application<PT>)>,
 }
 
-impl Engine {
+impl<PT> Engine<PT> {
     pub fn use_graphics(&mut self) -> Result<(), Box<dyn Error>> {
         self.application.graphics = Some(
             Graphics::new(&mut self.logger, &self.event_loop)
@@ -128,6 +146,7 @@ impl Engine {
 
     pub fn run(mut self) -> Result<(), Box<dyn Error>> {
         let proxy = self.event_loop.create_proxy();
+        let self2 = &mut self;
         self.event_loop.run(|event, elwt| {
             elwt.set_control_flow(ControlFlow::Poll);
             match event {
@@ -162,20 +181,27 @@ impl Engine {
                                     .recreate_swapchain(&graphics.vk_device)
                                     .expect("swapchain recreation failed");
 
-                                println!("recreating swapchain {:#?}", self.begin_time.elapsed().unwrap().as_millis())
+                                //println!("recreating swapchain {:#?}", self.begin_time.elapsed().unwrap().as_millis())
                             } 
 
-                            proxy.send_event(GlobalUpdateEvent).unwrap();
+                            proxy.send_event(GlobalEvent::Update).unwrap();
                         }
                         _ => ()
                     }
                 },
                 Event::AboutToWait => {
-                    proxy.send_event(GlobalUpdateEvent).unwrap();
+                    proxy.send_event(GlobalEvent::Update).unwrap();
                 },
-                Event::UserEvent(GlobalUpdateEvent) => {
-                    for func in self.update_funcs.iter() {
-                        (func)(&mut self.application)
+                Event::UserEvent(global_event) => {
+                    match global_event {
+                        GlobalEvent::Update => {
+                            for func in self.update_funcs.iter() {
+                                (func)(&mut self.application)
+                            }
+                        },
+                        GlobalEvent::Shutdown => {
+                            elwt.exit()
+                        }
                     }
                 }
                 _ => ()
