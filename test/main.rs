@@ -1,4 +1,4 @@
-use std::{borrow::BorrowMut, error::Error};
+use std::{borrow::BorrowMut, collections::HashMap, error::Error, time::Instant};
 use aspen_engine::AppBuilder;
 use hecs::{Entity, With};
 use rand::Rng;
@@ -18,7 +18,8 @@ enum Winner {
 
 struct PersistentData {
     pub update_count: usize,
-    pub result: Option<Winner>
+    pub result: Option<Winner>,
+    pub timestamps: HashMap<String, Instant>
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -26,12 +27,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         PersistentData { 
             update_count: 0,
             result: None,
+            timestamps: HashMap::new()
         })?
-        //.use_graphics()?
+        .use_graphics()?
         .add_update_func(|app| {
             if app.persistent.update_count == 0 {
                 let mut rng = rand::thread_rng();
-                let red_to_spawn = (0..50000).map(|_| {
+                let red_to_spawn = (0..5000).map(|_| {
                     (
                         Health(rng.gen_range(0..=100)), 
                         Ammo(rng.gen_range(50..=200)),
@@ -40,7 +42,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 });
                 
                 let mut rng = rand::thread_rng();
-                let blue_to_spawn = (0..50000).map(|_| {
+                let blue_to_spawn = (0..5000).map(|_| {
                     (
                         Health(rng.gen_range(0..=100)), 
                         Ammo(rng.gen_range(50..=200)), 
@@ -50,6 +52,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     
                 app.ecs.spawn_batch(red_to_spawn);
                 app.ecs.spawn_batch(blue_to_spawn);
+
+                app.persistent.timestamps.insert("begin".to_string(), Instant::now());
             }
 
             app.persistent.update_count += 1;
@@ -161,6 +165,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                         return
                     }
 
+                    println!(
+                        "finished after {}ms and {} cycles", 
+                        app.persistent.timestamps.get("begin").unwrap().elapsed().as_millis(),
+                        app.persistent.update_count
+                    );
                     app.exit()
                 },
                 Some(_) => ()

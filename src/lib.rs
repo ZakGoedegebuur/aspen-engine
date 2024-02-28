@@ -4,7 +4,7 @@ use std::{
         Arc, 
         Mutex
     }, 
-    time::SystemTime
+    time::Instant
 };
 
 use graphics::{
@@ -75,6 +75,7 @@ impl<PT> AppBuilder<PT> {
             graphics: self.graphics,
             ecs: hecs::World::new(),
             persistent: self.persistent,
+            begin_time: Instant::now(),
             event_loop_proxy: self.event_loop.create_proxy()
         };
 
@@ -82,7 +83,6 @@ impl<PT> AppBuilder<PT> {
             event_loop: self.event_loop,
             application,
             logger: self.logger,
-            begin_time: SystemTime::now(),
             update_funcs: self.update_funcs,
         })
     }
@@ -92,6 +92,7 @@ pub struct Application<PT> {
     pub graphics: Option<Graphics>,
     pub ecs: hecs::World,
     pub persistent: PT,
+    pub begin_time: Instant,
     event_loop_proxy: EventLoopProxy<GlobalEvent>,
 }
 
@@ -117,7 +118,6 @@ pub struct Engine<PT> {
     event_loop: EventLoop<GlobalEvent>,
     application: Application<PT>,
     logger: AspenLogger,
-    begin_time: SystemTime,
     update_funcs: Vec<fn(&mut Application<PT>)>,
 }
 
@@ -146,7 +146,6 @@ impl<PT> Engine<PT> {
 
     pub fn run(mut self) -> Result<(), Box<dyn Error>> {
         let proxy = self.event_loop.create_proxy();
-        let self2 = &mut self;
         self.event_loop.run(|event, elwt| {
             elwt.set_control_flow(ControlFlow::Poll);
             match event {
