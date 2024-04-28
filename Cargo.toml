@@ -2,6 +2,10 @@
 name = "aspen-engine"
 version = "0.1.12"
 edition = "2021"
+license = "MIT"
+description = "Simple Application engine"
+documentation = "https://docs.rs/aspen-engine"
+repository = "https://github.com/ZakGoedegebuur/aspen-engine"
 
 [dependencies]
 winit = "0.29.15"

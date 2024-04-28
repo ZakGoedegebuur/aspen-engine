@@ -1,7 +1,7 @@
 mod client;
 
 use client::AppData;
-use sycamore_engine::application::Application;
+use aspen_engine::application::Application;
 
 fn main() { 
     let app_data = AppData::new();
